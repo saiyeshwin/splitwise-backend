@@ -23,6 +23,8 @@ public class SecurityConfig {
                         auth->auth
                                 .requestMatchers("/auth/**")
                                 .permitAll()
+                                .requestMatchers("/groups/**")
+                                .permitAll()
                                 .anyRequest()
                                 .authenticated()
                 )
