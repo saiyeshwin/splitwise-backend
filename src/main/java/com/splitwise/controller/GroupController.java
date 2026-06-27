@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+import com.splitwise.dto.BalanceResponseDTO;
+
 @RestController
 @RequestMapping("/groups")
 @RequiredArgsConstructor
@@ -23,6 +25,10 @@ public class GroupController {
     public List<GroupResponseDTO> getGroups(){
 
         return groupService.getAllGroups();
+    }
+    @GetMapping("/{groupId}/balances")
+    public List<BalanceResponseDTO> getGroupBalances(@PathVariable Long groupId){
+        return groupService.getGroupBalances(groupId);
     }
 
 
