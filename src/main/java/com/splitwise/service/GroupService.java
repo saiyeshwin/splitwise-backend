@@ -15,9 +15,11 @@ import com.splitwise.dto.BalanceResponseDTO;
 import com.splitwise.entity.Expense;
 import com.splitwise.entity.ExpenseSplit;
 import com.splitwise.entity.GroupMember;
+import com.splitwise.entity.Settlement;
 import com.splitwise.repository.ExpensesRepository;
 import com.splitwise.repository.ExpenseSplitRepository;
 import com.splitwise.repository.GroupMemberRepository;
+import com.splitwise.repository.SettlementRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
@@ -31,6 +33,7 @@ public class GroupService {
     private final GroupMemberRepository groupMemberRepository;
     private final ExpensesRepository expenseRepository;
     private final ExpenseSplitRepository expenseSplitRepository;
+    private final SettlementRepository settlementRepository;
 
     public GroupResponseDTO createGroup(CreateGroupRequestDTO requestDTO){
         User creator = userRepository.findById(requestDTO.getCreatedById())
@@ -67,27 +70,46 @@ public class GroupService {
                 .orElseThrow(() -> new RuntimeException("Group not found"));
         
         List<GroupMember> members = groupMemberRepository.findByGroup(group);
-        Map<User, BigDecimal> netBalances = new HashMap<>();
+        Map<Long, BigDecimal> netBalances = new HashMap<>();
+        Map<Long, User> userMap = new HashMap<>();
         for (GroupMember member : members) {
-            netBalances.put(member.getUser(), BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+            User u = member.getUser();
+            netBalances.put(u.getId(), BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+            userMap.put(u.getId(), u);
         }
 
         List<Expense> expenses = expenseRepository.findByGroupId(groupId);
         for (Expense expense : expenses) {
             User payer = expense.getPaidBy();
-            netBalances.put(payer, netBalances.getOrDefault(payer, BigDecimal.ZERO).add(expense.getAmount()));
+            Long payerId = payer.getId();
+            userMap.put(payerId, payer);
+            netBalances.put(payerId, netBalances.getOrDefault(payerId, BigDecimal.ZERO).add(expense.getAmount()));
 
             List<ExpenseSplit> splits = expenseSplitRepository.findByExpense(expense);
             for (ExpenseSplit split : splits) {
                 User splitUser = split.getUser();
-                netBalances.put(splitUser, netBalances.getOrDefault(splitUser, BigDecimal.ZERO).subtract(split.getAmount()));
+                Long splitUserId = splitUser.getId();
+                userMap.put(splitUserId, splitUser);
+                netBalances.put(splitUserId, netBalances.getOrDefault(splitUserId, BigDecimal.ZERO).subtract(split.getAmount()));
             }
         }
 
-        List<User> creditors = new ArrayList<>();
-        List<User> debtors = new ArrayList<>();
+        List<Settlement> settlements = settlementRepository.findByGroupId(groupId);
+        for (Settlement settlement : settlements) {
+            User fromUser = settlement.getFromUser();
+            User toUser = settlement.getToUser();
+            Long fromId = fromUser.getId();
+            Long toId = toUser.getId();
+            userMap.put(fromId, fromUser);
+            userMap.put(toId, toUser);
+            netBalances.put(fromId, netBalances.getOrDefault(fromId, BigDecimal.ZERO).add(settlement.getAmount()));
+            netBalances.put(toId, netBalances.getOrDefault(toId, BigDecimal.ZERO).subtract(settlement.getAmount()));
+        }
 
-        for (Map.Entry<User, BigDecimal> entry : netBalances.entrySet()) {
+        List<Long> creditors = new ArrayList<>();
+        List<Long> debtors = new ArrayList<>();
+
+        for (Map.Entry<Long, BigDecimal> entry : netBalances.entrySet()) {
             BigDecimal bal = entry.getValue();
             if (bal.compareTo(BigDecimal.ZERO) > 0) {
                 creditors.add(entry.getKey());
@@ -100,15 +122,15 @@ public class GroupService {
         int cIdx = 0;
         int dIdx = 0;
 
-        creditors.sort((u1, u2) -> netBalances.get(u2).compareTo(netBalances.get(u1)));
-        debtors.sort((u1, u2) -> netBalances.get(u1).compareTo(netBalances.get(u2)));
+        creditors.sort((id1, id2) -> netBalances.get(id2).compareTo(netBalances.get(id1)));
+        debtors.sort((id1, id2) -> netBalances.get(id1).compareTo(netBalances.get(id2)));
 
         while (cIdx < creditors.size() && dIdx < debtors.size()) {
-            User creditor = creditors.get(cIdx);
-            User debtor = debtors.get(dIdx);
+            Long creditorId = creditors.get(cIdx);
+            Long debtorId = debtors.get(dIdx);
 
-            BigDecimal creditAmt = netBalances.get(creditor);
-            BigDecimal debtAmt = netBalances.get(debtor).negate();
+            BigDecimal creditAmt = netBalances.get(creditorId);
+            BigDecimal debtAmt = netBalances.get(debtorId).negate();
 
             if (creditAmt.compareTo(BigDecimal.ZERO) <= 0) {
                 cIdx++;
@@ -121,21 +143,24 @@ public class GroupService {
 
             BigDecimal settleAmt = creditAmt.min(debtAmt);
 
+            User creditorUser = userMap.get(creditorId);
+            User debtorUser = userMap.get(debtorId);
+
             balances.add(BalanceResponseDTO.builder()
-                    .debtorId(debtor.getId())
-                    .debtorName(debtor.getName())
-                    .creditorId(creditor.getId())
-                    .creditorName(creditor.getName())
+                    .debtorId(debtorId)
+                    .debtorName(debtorUser.getName())
+                    .creditorId(creditorId)
+                    .creditorName(creditorUser.getName())
                     .amount(settleAmt.setScale(2, RoundingMode.HALF_UP))
                     .build());
 
-            netBalances.put(creditor, creditAmt.subtract(settleAmt));
-            netBalances.put(debtor, netBalances.get(debtor).add(settleAmt));
+            netBalances.put(creditorId, creditAmt.subtract(settleAmt));
+            netBalances.put(debtorId, netBalances.get(debtorId).add(settleAmt));
 
             if (creditAmt.subtract(settleAmt).compareTo(BigDecimal.ZERO) <= 0) {
                 cIdx++;
             }
-            if (netBalances.get(debtor).compareTo(BigDecimal.ZERO) >= 0) {
+            if (netBalances.get(debtorId).compareTo(BigDecimal.ZERO) >= 0) {
                 dIdx++;
             }
         }
