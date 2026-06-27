@@ -1,47 +1,54 @@
 /* ================================================================
    Splitwise — SPA Application Logic
-   Connects to the Spring Boot backend REST API.
 ================================================================ */
 
-// ── Config ──────────────────────────────────────────────────────
-const API_BASE = '';   // same origin (served from Spring Boot)
+const API_BASE = '';
 
-// ── State ────────────────────────────────────────────────────────
 let state = {
   token:          null,
-  currentUser:    null,        // { id, name, email }
+  currentUser:    null,
   groups:         [],
-  selectedGroup:  null,        // full group object
-  members:        [],          // GroupMember list for selected group
-  balances:       [],          // BalanceResponseDTO list
+  selectedGroup:  null,
+  members:        [],
+  balances:       [],
   splitType:      'EQUAL',
-  pendingMembers: [],          // emails staged in New Group modal
+  pendingMembers: [],
 };
 
-// ── Bootstrap ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// BOOTSTRAP
+// ─────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  const saved = sessionStorage.getItem('sw_token');
-  const savedUser = sessionStorage.getItem('sw_user');
-  if (saved && savedUser) {
-    state.token = saved;
+  const savedToken = sessionStorage.getItem('sw_token');
+  const savedUser  = sessionStorage.getItem('sw_user');
+  if (savedToken && savedUser) {
+    state.token = savedToken;
     state.currentUser = JSON.parse(savedUser);
     showApp();
     loadGroups();
   }
+
+  // Close modal on backdrop click
+  document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', e => { if (e.target === el) el.classList.remove('active'); });
+  });
+
+  // Keyboard shortcut
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape')
+      document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────
 // API CLIENT
 // ─────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
-  const opts = {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-  };
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (state.token) opts.headers['Authorization'] = 'Bearer ' + state.token;
   if (body !== undefined) opts.body = JSON.stringify(body);
 
-  const res = await fetch(API_BASE + path, opts);
+  const res  = await fetch(API_BASE + path, opts);
 
   if (res.status === 401 || res.status === 403) {
     handleLogout();
@@ -53,10 +60,11 @@ async function api(method, path, body) {
   try { data = JSON.parse(text); } catch { data = text; }
 
   if (!res.ok) {
-    const msg = (typeof data === 'object' && data.message) ? data.message
-              : (typeof data === 'string' && data)          ? data
-              : `Error ${res.status}`;
-    throw new Error(msg);
+    throw new Error(
+      (typeof data === 'object' && data.message) ? data.message :
+      (typeof data === 'string' && data)          ? data :
+      `Error ${res.status}`
+    );
   }
   return data;
 }
@@ -75,26 +83,26 @@ async function handleLogin() {
   const email    = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
   const errEl    = document.getElementById('login-error');
-  errEl.classList.remove('visible');
+  hideAlert(errEl);
 
-  if (!email || !password) { showError(errEl, 'Please fill in all fields.'); return; }
+  if (!email || !password) { showAlert(errEl, 'Please fill in all fields.'); return; }
 
   const btn = document.getElementById('btn-login');
-  setLoading(btn, true);
+  setLoading(btn, true, 'Sign In');
   try {
-    const res = await api('POST', '/auth/login', { email, password });
+    const res   = await api('POST', '/auth/login', { email, password });
     state.token = res.token;
 
-    // Resolve current user by email from the users endpoint
     const users = await api('GET', '/users');
     state.currentUser = users.find(u => u.email === email) || { name: email, email };
 
-    persistSession();
+    sessionStorage.setItem('sw_token', state.token);
+    sessionStorage.setItem('sw_user', JSON.stringify(state.currentUser));
     showApp();
     await loadGroups();
-    toast('Welcome back, ' + (state.currentUser.name || email) + '!', 'success');
+    toast('Signed in successfully.', 'success');
   } catch (e) {
-    showError(errEl, e.message || 'Invalid credentials.');
+    showAlert(errEl, e.message || 'Invalid credentials.');
   } finally {
     setLoading(btn, false, 'Sign In');
   }
@@ -105,22 +113,21 @@ async function handleRegister() {
   const email    = document.getElementById('reg-email').value.trim();
   const password = document.getElementById('reg-password').value;
   const errEl    = document.getElementById('register-error');
-  errEl.classList.remove('visible');
+  hideAlert(errEl);
 
-  if (!name || !email || !password) { showError(errEl, 'Please fill in all fields.'); return; }
-  if (password.length < 6)          { showError(errEl, 'Password must be at least 6 characters.'); return; }
+  if (!name || !email || !password) { showAlert(errEl, 'Please fill in all fields.'); return; }
+  if (password.length < 6)          { showAlert(errEl, 'Password must be at least 6 characters.'); return; }
 
   const btn = document.getElementById('btn-register');
-  setLoading(btn, true);
+  setLoading(btn, true, 'Create Account');
   try {
     await api('POST', '/auth/register', { name, email, password });
-    // Auto-login after registration
     document.getElementById('login-email').value    = email;
     document.getElementById('login-password').value = password;
     switchAuthTab('login');
-    toast('Account created! Please sign in.', 'success');
+    toast('Account created. Please sign in.', 'success');
   } catch (e) {
-    showError(errEl, e.message || 'Registration failed.');
+    showAlert(errEl, e.message || 'Registration failed.');
   } finally {
     setLoading(btn, false, 'Create Account');
   }
@@ -132,7 +139,7 @@ function handleLogout() {
   sessionStorage.removeItem('sw_user');
   document.getElementById('app-screen').classList.remove('active');
   document.getElementById('auth-screen').style.display = 'flex';
-  document.getElementById('login-email').value = '';
+  document.getElementById('login-email').value    = '';
   document.getElementById('login-password').value = '';
 }
 
@@ -141,16 +148,11 @@ function showApp() {
   document.getElementById('app-screen').classList.add('active');
   const u = state.currentUser;
   if (u) {
-    const initials = (u.name || u.email).split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-    document.getElementById('user-avatar-initials').textContent = initials;
+    const inits = avatarInitials(u.name || u.email);
+    document.getElementById('user-avatar-initials').textContent = inits;
     document.getElementById('sidebar-user-name').textContent    = u.name  || 'User';
     document.getElementById('sidebar-user-email').textContent   = u.email || '';
   }
-}
-
-function persistSession() {
-  sessionStorage.setItem('sw_token', state.token);
-  sessionStorage.setItem('sw_user', JSON.stringify(state.currentUser));
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -170,19 +172,15 @@ function renderGroupList() {
   container.innerHTML = '';
 
   if (!state.groups || state.groups.length === 0) {
-    container.innerHTML = `<div style="padding:16px 12px;font-size:0.8rem;color:var(--text-muted);text-align:center">
-      No groups yet.<br>Create one to get started.
-    </div>`;
+    container.innerHTML = `<div class="groups-empty">No groups yet.<br>Create one to get started.</div>`;
     return;
   }
 
   state.groups.forEach(g => {
     const div = document.createElement('div');
     div.className = 'group-item' + (state.selectedGroup?.id === g.id ? ' active' : '');
-    div.dataset.id = g.id;
-    const emoji = groupEmoji(g.name);
     div.innerHTML = `
-      <div class="group-item-icon">${emoji}</div>
+      <svg><use href="#ic-users"/></svg>
       <span class="group-item-name">${esc(g.name)}</span>
     `;
     div.onclick = () => selectGroup(g);
@@ -190,27 +188,19 @@ function renderGroupList() {
   });
 }
 
-function groupEmoji(name) {
-  const n = (name || '').toLowerCase();
-  if (n.includes('trip') || n.includes('travel')) return '✈️';
-  if (n.includes('flat') || n.includes('room'))   return '🏠';
-  if (n.includes('food') || n.includes('dinner')) return '🍕';
-  if (n.includes('party'))                        return '🎉';
-  return '👥';
-}
-
 async function selectGroup(g) {
   state.selectedGroup = g;
   renderGroupList();
 
   document.getElementById('topbar-group-name').textContent = g.name;
-  document.getElementById('topbar-group-sub').textContent  = 'Loading...';
+  document.getElementById('topbar-group-sub').textContent  = 'Loading…';
   document.getElementById('topbar-actions').style.display = 'flex';
-  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('empty-state').style.display    = 'none';
   document.getElementById('stage-content').classList.add('active');
 
   await Promise.all([loadMembers(g.id), loadBalances(g.id)]);
-  document.getElementById('topbar-group-sub').textContent = `${state.members.length} member${state.members.length !== 1 ? 's' : ''}`;
+  document.getElementById('topbar-group-sub').textContent =
+    `${state.members.length} member${state.members.length !== 1 ? 's' : ''}`;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -221,7 +211,7 @@ async function loadMembers(groupId) {
     state.members = await api('GET', `/groups/${groupId}/members`);
     renderMembers();
   } catch (e) {
-    toast('Could not load members: ' + e.message, 'error');
+    toast('Could not load members.', 'error');
   }
 }
 
@@ -232,10 +222,10 @@ function renderMembers() {
 
   state.members.forEach(m => {
     const displayName = m.userName || m.userEmail || '?';
-    const inits = displayName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-    const chip = document.createElement('div');
+    const inits = avatarInitials(displayName);
+    const chip  = document.createElement('div');
     chip.className = 'member-chip';
-    chip.innerHTML = `<div class="chip-avatar">${inits}</div>${esc(displayName)}`;
+    chip.innerHTML = `<div class="avatar avatar-sm">${inits}</div>${esc(displayName)}`;
     row.appendChild(chip);
   });
 }
@@ -243,30 +233,29 @@ function renderMembers() {
 function openAddMemberModal() {
   document.getElementById('add-member-subtitle').textContent = `Add a member to "${state.selectedGroup?.name}"`;
   document.getElementById('new-member-email').value = '';
-  document.getElementById('add-member-error').classList.remove('visible');
+  hideAlert(document.getElementById('add-member-error'));
   openModal('modal-add-member');
 }
 
 async function handleAddMember() {
   const email = document.getElementById('new-member-email').value.trim();
   const errEl = document.getElementById('add-member-error');
-  errEl.classList.remove('visible');
-  if (!email) { showError(errEl, 'Please enter an email address.'); return; }
+  hideAlert(errEl);
+  if (!email) { showAlert(errEl, 'Please enter an email address.'); return; }
 
   try {
-    // Resolve user by email
-    const users  = await api('GET', '/users');
-    const user   = users.find(u => u.email === email);
-    if (!user) { showError(errEl, 'No user found with that email.'); return; }
+    const users = await api('GET', '/users');
+    const user  = users.find(u => u.email === email);
+    if (!user) { showAlert(errEl, 'No account found with that email.'); return; }
 
     await api('POST', `/groups/${state.selectedGroup.id}/members`, { userId: user.id });
-    toast(`${user.name || email} added to the group!`, 'success');
+    toast(`${user.name || email} added to the group.`, 'success');
     closeModal('modal-add-member');
     await loadMembers(state.selectedGroup.id);
     document.getElementById('topbar-group-sub').textContent =
       `${state.members.length} member${state.members.length !== 1 ? 's' : ''}`;
   } catch (e) {
-    showError(errEl, e.message);
+    showAlert(errEl, e.message);
   }
 }
 
@@ -278,7 +267,7 @@ async function loadBalances(groupId) {
     state.balances = await api('GET', `/groups/${groupId}/balances`);
     renderBalances();
   } catch (e) {
-    toast('Could not load balances: ' + e.message, 'error');
+    toast('Could not load balances.', 'error');
   }
 }
 
@@ -286,10 +275,8 @@ function renderBalances() {
   const list = document.getElementById('balances-list');
   list.innerHTML = '';
 
-  // Compute owed/owing for current user
-  let owed = 0, owing = 0;
   const myId = state.currentUser?.id;
-
+  let owed = 0, owing = 0;
   state.balances.forEach(b => {
     if (b.creditorId === myId) owed  += Number(b.amount);
     if (b.debtorId   === myId) owing += Number(b.amount);
@@ -300,38 +287,49 @@ function renderBalances() {
 
   if (state.balances.length === 0) {
     list.innerHTML = `
-      <div class="no-debts glass">
-        <div class="nd-icon">✅</div>
-        <p>All settled up! No outstanding debts in this group.</p>
+      <div class="all-settled">
+        <svg><use href="#ic-check-circle"/></svg>
+        <p>All settled up. No outstanding debts in this group.</p>
       </div>`;
     return;
   }
 
   state.balances.forEach(b => {
-    const debtorInitials   = initials(b.debtorName);
-    const creditorInitials = initials(b.creditorName);
-    const card = document.createElement('div');
-    card.className = 'balance-card glass';
-    card.innerHTML = `
+    const di = avatarInitials(b.debtorName);
+    const ci = avatarInitials(b.creditorName);
+    const row = document.createElement('div');
+    row.className = 'balance-row';
+    row.innerHTML = `
       <div class="balance-avatars">
-        <div class="balance-avatar debtor">${debtorInitials}</div>
-        <div class="balance-avatar creditor">${creditorInitials}</div>
+        <div class="avatar avatar-md balance-avatar-debtor">${di}</div>
+        <div class="avatar avatar-md balance-avatar-creditor">${ci}</div>
       </div>
       <div class="balance-info">
         <div class="balance-names">
-          ${esc(b.debtorName)} <span class="arrow">→</span> ${esc(b.creditorName)}
+          ${esc(b.debtorName)}
+          <span class="balance-arrow"><svg><use href="#ic-arrow-right"/></svg></span>
+          ${esc(b.creditorName)}
         </div>
-        <div class="balance-desc">Outstanding debt</div>
+        <div class="balance-sub">Outstanding debt</div>
       </div>
       <div class="balance-amount">₹${Number(b.amount).toFixed(2)}</div>
     `;
-    list.appendChild(card);
+    list.appendChild(row);
   });
 }
 
 // ─────────────────────────────────────────────────────────────────
-// NEW GROUP MODAL
+// NEW GROUP
 // ─────────────────────────────────────────────────────────────────
+function openNewGroupModal() {
+  state.pendingMembers = [];
+  document.getElementById('grp-name').value = '';
+  document.getElementById('grp-member-email').value = '';
+  document.getElementById('pending-members').innerHTML = '';
+  hideAlert(document.getElementById('new-group-error'));
+  openModal('modal-new-group');
+}
+
 function addPendingMember() {
   const input = document.getElementById('grp-member-email');
   const email = input.value.trim();
@@ -348,80 +346,68 @@ function removePendingMember(email) {
 }
 
 function renderPendingMembers() {
-  const container = document.getElementById('pending-members');
-  container.innerHTML = '';
+  const c = document.getElementById('pending-members');
+  c.innerHTML = '';
   state.pendingMembers.forEach(email => {
     const chip = document.createElement('div');
     chip.className = 'pending-chip';
-    chip.innerHTML = `${esc(email)} <span class="rm" onclick="removePendingMember('${esc(email)}')">✕</span>`;
-    container.appendChild(chip);
+    chip.innerHTML = `${esc(email)}<button class="pending-chip-rm" onclick="removePendingMember('${esc(email)}')" title="Remove">&times;</button>`;
+    c.appendChild(chip);
   });
 }
 
 async function handleCreateGroup() {
   const name  = document.getElementById('grp-name').value.trim();
   const errEl = document.getElementById('new-group-error');
-  errEl.classList.remove('visible');
-
-  if (!name) { showError(errEl, 'Please enter a group name.'); return; }
+  hideAlert(errEl);
+  if (!name) { showAlert(errEl, 'Please enter a group name.'); return; }
 
   const btn = document.getElementById('btn-create-group');
-  setLoading(btn, true);
+  setLoading(btn, true, 'Create group');
   try {
-    const group = await api('POST', '/groups', {
-      name,
-      createdById: state.currentUser.id,
-    });
-
-    // Add creator as member
+    const group = await api('POST', '/groups', { name, createdById: state.currentUser.id });
     await api('POST', `/groups/${group.id}/members`, { userId: state.currentUser.id });
 
-    // Add pending members
-    const allUsers = await api('GET', '/users');
-    for (const email of state.pendingMembers) {
-      const user = allUsers.find(u => u.email === email);
-      if (user) {
-        await api('POST', `/groups/${group.id}/members`, { userId: user.id }).catch(() => {});
+    if (state.pendingMembers.length > 0) {
+      const allUsers = await api('GET', '/users');
+      for (const email of state.pendingMembers) {
+        const user = allUsers.find(u => u.email === email);
+        if (user) await api('POST', `/groups/${group.id}/members`, { userId: user.id }).catch(() => {});
       }
     }
 
-    toast(`Group "${name}" created!`, 'success');
-    state.pendingMembers = [];
-    document.getElementById('grp-name').value = '';
-    document.getElementById('pending-members').innerHTML = '';
+    toast(`Group "${name}" created.`, 'success');
     closeModal('modal-new-group');
     await loadGroups();
-    const freshGroup = state.groups.find(g => g.id === group.id) || group;
-    selectGroup(freshGroup);
+    const fresh = state.groups.find(g => g.id === group.id) || group;
+    selectGroup(fresh);
   } catch (e) {
-    showError(errEl, e.message);
+    showAlert(errEl, e.message);
   } finally {
-    setLoading(btn, false, 'Create Group');
+    setLoading(btn, false, 'Create group');
   }
 }
 
 // ─────────────────────────────────────────────────────────────────
-// ADD EXPENSE MODAL
+// ADD EXPENSE
 // ─────────────────────────────────────────────────────────────────
 function openExpenseModal() {
-  // Reset
   document.getElementById('exp-desc').value   = '';
   document.getElementById('exp-amount').value = '';
-  document.getElementById('expense-error').classList.remove('visible');
+  hideAlert(document.getElementById('expense-error'));
+  document.getElementById('split-validation').className = 'validation-msg';
   state.splitType = 'EQUAL';
   setSplitType('EQUAL');
 
-  // Populate Paid By
-  const select = document.getElementById('exp-paidby');
-  select.innerHTML = '';
+  const sel = document.getElementById('exp-paidby');
+  sel.innerHTML = '';
   state.members.forEach(m => {
     const opt = document.createElement('option');
-    opt.value       = m.userId;
+    opt.value = m.userId;
     opt.textContent = m.userName || m.userEmail;
     if (m.userId === state.currentUser?.id) opt.selected = true;
-    select.appendChild(opt);
+    sel.appendChild(opt);
   });
-
   openModal('modal-expense');
 }
 
@@ -431,8 +417,8 @@ function setSplitType(type) {
     document.getElementById('st-' + t.toLowerCase()).classList.toggle('active', t === type);
   });
 
-  const equalInfo    = document.getElementById('split-equal-info');
-  const inputsWrap   = document.getElementById('split-inputs-container');
+  const equalInfo  = document.getElementById('split-equal-info');
+  const inputsWrap = document.getElementById('split-inputs-container');
 
   if (type === 'EQUAL') {
     equalInfo.style.display  = 'block';
@@ -440,29 +426,27 @@ function setSplitType(type) {
   } else {
     equalInfo.style.display  = 'none';
     inputsWrap.style.display = 'block';
-    renderSplitInputs(type);
+    renderSplitRows(type);
   }
   updateSplitHint();
 }
 
-function renderSplitInputs(type) {
-  const list = document.getElementById('split-members-list');
+function renderSplitRows(type) {
+  const list = document.getElementById('split-rows');
   list.innerHTML = '';
   state.members.forEach(m => {
-    const row  = document.createElement('div');
-    row.className = 'split-member-row';
     const displayName = m.userName || m.userEmail || '?';
-    const initl = initials(displayName);
-    const label = type === 'PERCENT' ? '%' : '₹';
+    const unit  = type === 'PERCENT' ? '%' : '₹';
+    const row   = document.createElement('div');
+    row.className = 'split-row';
     row.innerHTML = `
-      <div class="split-member-name">
-        <div class="chip-avatar">${initl}</div>
+      <div class="split-row-name">
+        <div class="avatar avatar-sm">${avatarInitials(displayName)}</div>
         ${esc(displayName)}
       </div>
-      <input class="split-input" type="number" min="0" step="0.01"
-             id="split-${m.userId}" data-member="${m.userId}"
-             placeholder="0" oninput="updateSplitHint()">
-      <span class="split-input-label">${label}</span>
+      <input class="split-amount-input" type="number" min="0" step="0.01"
+             id="split-${m.userId}" placeholder="0" oninput="updateSplitHint()">
+      <span class="split-unit">${unit}</span>
     `;
     list.appendChild(row);
   });
@@ -476,28 +460,27 @@ function getSplitValues() {
 }
 
 function updateSplitHint() {
-  const validEl = document.getElementById('split-validation');
-  if (state.splitType === 'EQUAL') { validEl.className = 'split-validation'; return; }
+  const v = document.getElementById('split-validation');
+  if (state.splitType === 'EQUAL') { v.className = 'validation-msg'; return; }
 
-  const total  = parseFloat(document.getElementById('exp-amount').value) || 0;
-  const splits = getSplitValues();
-  const sum    = splits.reduce((a, b) => a + b.value, 0);
+  const total = parseFloat(document.getElementById('exp-amount').value) || 0;
+  const sum   = getSplitValues().reduce((a, b) => a + b.value, 0);
 
   if (state.splitType === 'EXACT') {
     if (Math.abs(sum - total) < 0.01) {
-      validEl.className = 'split-validation ok';
-      validEl.textContent = `✓ Splits total ₹${sum.toFixed(2)} — matches amount.`;
+      v.className = 'validation-msg ok';
+      v.textContent = `Splits total ₹${sum.toFixed(2)} — matches amount.`;
     } else {
-      validEl.className = 'split-validation error';
-      validEl.textContent = `Splits total ₹${sum.toFixed(2)} but amount is ₹${total.toFixed(2)}.`;
+      v.className = 'validation-msg error';
+      v.textContent = `Splits total ₹${sum.toFixed(2)}, amount is ₹${total.toFixed(2)}.`;
     }
   } else {
     if (Math.abs(sum - 100) < 0.01) {
-      validEl.className = 'split-validation ok';
-      validEl.textContent = `✓ Percentages total 100%.`;
+      v.className = 'validation-msg ok';
+      v.textContent = 'Percentages total 100%.';
     } else {
-      validEl.className = 'split-validation error';
-      validEl.textContent = `Percentages total ${sum.toFixed(1)}% — must equal 100%.`;
+      v.className = 'validation-msg error';
+      v.textContent = `Percentages total ${sum.toFixed(1)}% — must equal 100%.`;
     }
   }
 }
@@ -507,29 +490,24 @@ async function handleAddExpense() {
   const amount = parseFloat(document.getElementById('exp-amount').value);
   const paidBy = parseInt(document.getElementById('exp-paidby').value, 10);
   const errEl  = document.getElementById('expense-error');
-  errEl.classList.remove('visible');
+  hideAlert(errEl);
 
-  if (!amount || amount <= 0) { showError(errEl, 'Please enter a valid amount.'); return; }
+  if (!amount || amount <= 0) { showAlert(errEl, 'Please enter a valid amount.'); return; }
 
-  // Validate splits
   let splits = null;
   if (state.splitType !== 'EQUAL') {
     const vals = getSplitValues();
     const sum  = vals.reduce((a, b) => a + b.value, 0);
-    if (state.splitType === 'EXACT'   && Math.abs(sum - amount) > 0.01) {
-      showError(errEl, `Split amounts must total ₹${amount.toFixed(2)}. Currently ₹${sum.toFixed(2)}.`); return;
-    }
-    if (state.splitType === 'PERCENT' && Math.abs(sum - 100) > 0.01) {
-      showError(errEl, `Percentages must total 100%. Currently ${sum.toFixed(1)}%.`); return;
-    }
-    splits = vals.filter(v => v.value > 0);
+    if (state.splitType === 'EXACT'   && Math.abs(sum - amount) > 0.01) { showAlert(errEl, `Split amounts must total ₹${amount.toFixed(2)}.`); return; }
+    if (state.splitType === 'PERCENT' && Math.abs(sum - 100)    > 0.01) { showAlert(errEl, `Percentages must total 100%.`); return; }
+    splits = vals.filter(s => s.value > 0);
   }
 
   const btn = document.getElementById('btn-add-expense');
-  setLoading(btn, true);
+  setLoading(btn, true, 'Add expense');
   try {
     const body = {
-      description: desc || undefined,
+      description:  desc || undefined,
       amount,
       paidByUserId: paidBy,
       groupId:      state.selectedGroup.id,
@@ -538,23 +516,24 @@ async function handleAddExpense() {
     if (splits) body.splits = splits.map(s => ({ userId: s.userId, value: s.value }));
 
     await api('POST', '/expenses', body);
-    toast('Expense added!', 'success');
+    toast('Expense added.', 'success');
     closeModal('modal-expense');
     await loadBalances(state.selectedGroup.id);
   } catch (e) {
-    showError(errEl, e.message);
+    showAlert(errEl, e.message);
   } finally {
-    setLoading(btn, false, 'Add Expense');
+    setLoading(btn, false, 'Add expense');
   }
 }
 
 // ─────────────────────────────────────────────────────────────────
-// SETTLE UP MODAL
+// SETTLE UP
 // ─────────────────────────────────────────────────────────────────
 function openSettleModal() {
-  document.getElementById('settle-error').classList.remove('visible');
   document.getElementById('settle-amount').value = '';
-  document.getElementById('settle-hint').style.display = 'none';
+  hideAlert(document.getElementById('settle-error'));
+  const hintEl = document.getElementById('settle-hint');
+  hintEl.classList.remove('visible');
 
   const fromSel = document.getElementById('settle-from');
   const toSel   = document.getElementById('settle-to');
@@ -570,7 +549,6 @@ function openSettleModal() {
     });
   });
 
-  // Prefill from balances if possible
   if (state.balances.length > 0) {
     const b = state.balances[0];
     fromSel.value = b.debtorId;
@@ -578,7 +556,6 @@ function openSettleModal() {
     document.getElementById('settle-amount').value = Number(b.amount).toFixed(2);
     updateSettleHint();
   }
-
   openModal('modal-settle');
 }
 
@@ -586,14 +563,14 @@ function updateSettleHint() {
   const fromId = parseInt(document.getElementById('settle-from').value, 10);
   const toId   = parseInt(document.getElementById('settle-to').value,   10);
   const hintEl = document.getElementById('settle-hint');
+  const match  = state.balances.find(b => b.debtorId === fromId && b.creditorId === toId);
 
-  const match = state.balances.find(b => b.debtorId === fromId && b.creditorId === toId);
   if (match) {
-    hintEl.style.display = 'block';
-    hintEl.textContent   = `💡 Outstanding debt: ₹${Number(match.amount).toFixed(2)}`;
+    hintEl.classList.add('visible');
+    hintEl.textContent = `Suggested amount based on outstanding debt: ₹${Number(match.amount).toFixed(2)}`;
     document.getElementById('settle-amount').value = Number(match.amount).toFixed(2);
   } else {
-    hintEl.style.display = 'none';
+    hintEl.classList.remove('visible');
   }
 }
 
@@ -602,99 +579,86 @@ async function handleSettle() {
   const toId   = parseInt(document.getElementById('settle-to').value,   10);
   const amount = parseFloat(document.getElementById('settle-amount').value);
   const errEl  = document.getElementById('settle-error');
-  errEl.classList.remove('visible');
+  hideAlert(errEl);
 
-  if (fromId === toId) { showError(errEl, 'Payer and recipient must be different.'); return; }
-  if (!amount || amount <= 0) { showError(errEl, 'Please enter a valid amount.'); return; }
+  if (fromId === toId)       { showAlert(errEl, 'Payer and recipient must be different.'); return; }
+  if (!amount || amount <= 0){ showAlert(errEl, 'Please enter a valid amount.'); return; }
 
   try {
-    await api('POST', '/settlements', {
-      groupId:    state.selectedGroup.id,
-      fromUserId: fromId,
-      toUserId:   toId,
-      amount,
-    });
-    toast('Settlement recorded!', 'success');
+    await api('POST', '/settlements', { groupId: state.selectedGroup.id, fromUserId: fromId, toUserId: toId, amount });
+    toast('Settlement recorded.', 'success');
     closeModal('modal-settle');
     await loadBalances(state.selectedGroup.id);
   } catch (e) {
-    showError(errEl, e.message);
+    showAlert(errEl, e.message);
   }
 }
 
 // ─────────────────────────────────────────────────────────────────
-// MODAL HELPERS
+// MODAL UTILS
 // ─────────────────────────────────────────────────────────────────
 function openModal(id) {
-  // Special pre-open hooks
   if (id === 'modal-expense') { openExpenseModal(); return; }
   if (id === 'modal-settle')  { openSettleModal();  return; }
-  if (id === 'modal-new-group') { state.pendingMembers = []; document.getElementById('pending-members').innerHTML = ''; }
-
   document.getElementById(id).classList.add('active');
 }
-
 function closeModal(id) {
   document.getElementById(id).classList.remove('active');
 }
 
-// Close modal on backdrop click
-document.querySelectorAll('.modal-overlay').forEach(el => {
-  el.addEventListener('click', e => {
-    if (e.target === el) el.classList.remove('active');
-  });
-});
-
 // ─────────────────────────────────────────────────────────────────
 // TOAST
 // ─────────────────────────────────────────────────────────────────
+const TOAST_ICONS = {
+  success: '#ic-check-circle',
+  error:   '#ic-alert-circle',
+  info:    '#ic-info',
+};
+
 function toast(message, type = 'info') {
-  const container = document.getElementById('toast-container');
   const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
-  el.innerHTML = `<span>${icon}</span> ${esc(message)}`;
-  container.appendChild(el);
+  el.className = 'toast';
+  el.innerHTML = `<svg class="toast-${type}"><use href="${TOAST_ICONS[type] || TOAST_ICONS.info}"/></svg>${esc(message)}`;
+  document.getElementById('toast-container').appendChild(el);
   setTimeout(() => {
-    el.style.transition = 'opacity 0.35s, transform 0.35s';
-    el.style.opacity = '0';
-    el.style.transform = 'translateX(60px)';
-    setTimeout(() => el.remove(), 380);
-  }, 3500);
+    el.style.transition = 'opacity 0.3s, transform 0.3s';
+    el.style.opacity    = '0';
+    el.style.transform  = 'translateX(40px)';
+    setTimeout(() => el.remove(), 320);
+  }, 3200);
 }
 
 // ─────────────────────────────────────────────────────────────────
-// UI UTILITIES
+// FORM UTILS
 // ─────────────────────────────────────────────────────────────────
-function showError(el, msg) {
-  el.textContent = msg;
+function showAlert(el, msg) {
+  el.querySelector('span').textContent = msg;
   el.classList.add('visible');
 }
-
-function setLoading(btn, loading, originalText) {
+function hideAlert(el) {
+  el.classList.remove('visible');
+  const span = el.querySelector('span');
+  if (span) span.textContent = '';
+}
+function setLoading(btn, loading, label) {
   if (loading) {
-    btn.dataset.origText = btn.textContent;
-    btn.innerHTML = '<span class="spinner"></span>';
-    btn.disabled  = true;
+    btn.dataset.orig = btn.innerHTML;
+    btn.innerHTML    = `<span class="spinner"></span>`;
+    btn.disabled     = true;
   } else {
-    btn.textContent = originalText || btn.dataset.origText || 'Submit';
-    btn.disabled    = false;
+    btn.innerHTML = btn.dataset.orig || label || 'Submit';
+    btn.disabled  = false;
   }
 }
 
-function esc(str) {
+// ─────────────────────────────────────────────────────────────────
+// STRING UTILS
+// ─────────────────────────────────────────────────────────────────
+function esc(s) {
   const d = document.createElement('div');
-  d.appendChild(document.createTextNode(String(str || '')));
+  d.appendChild(document.createTextNode(String(s || '')));
   return d.innerHTML;
 }
-
-function initials(name) {
+function avatarInitials(name) {
   return (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
-
-// Keyboard shortcuts
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
-  }
-});
