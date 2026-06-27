@@ -11,7 +11,7 @@ public class SplitwiseApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(SplitwiseApplication.class, args);
 	}
-	@Value("${DB_URL}")
+	@Value("${DB_URL:jdbc:mysql://localhost:3306/splitwise}")
 	private String dbUrl;
 
 	@PostConstruct

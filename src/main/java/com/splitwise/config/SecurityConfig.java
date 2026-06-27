@@ -25,6 +25,8 @@ public class SecurityConfig {
                                 .permitAll()
                                 .requestMatchers("/groups/**")
                                 .permitAll()
+                                .requestMatchers("/expenses/**")
+                                .permitAll()
                                 .anyRequest()
                                 .authenticated()
                 )
