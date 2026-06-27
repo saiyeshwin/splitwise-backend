@@ -24,7 +24,7 @@ public class JwtService {
     public String extractEmail(String token){
         return Jwts.parser()
                 .setSigningKey(secretKey)
-                .parseClaimsJwt(token)
+                .parseClaimsJws(token)
                 .getBody()
                 .getSubject();
     }

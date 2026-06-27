@@ -4,6 +4,8 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.util.List;
+import com.splitwise.entity.SplitType;
+
 @Getter
 @Setter
 @Builder
@@ -14,6 +16,6 @@ public class ExpenseRequestDTO {
     private BigDecimal amount;
     private Long paidByUserId;
     private Long groupId;
-    private String splitType;
-    private List<Long> userIds;
+    private SplitType splitType;
+    private List<SplitRequestDTO> splits;
 }

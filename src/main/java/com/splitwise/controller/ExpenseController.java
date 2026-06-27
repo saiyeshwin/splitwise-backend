@@ -1,6 +1,6 @@
 package com.splitwise.controller;
 
-import com.splitwise.dto.CreateExpenseRequestDTO;
+import com.splitwise.dto.ExpenseRequestDTO;
 import com.splitwise.dto.CreateExpenseResponseDTO;
 import com.splitwise.service.ExpenseService;
 import lombok.RequiredArgsConstructor;
@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 public class ExpenseController {
     private final ExpenseService expenseService;
     @PostMapping
-    public CreateExpenseResponseDTO createExpense(@RequestBody CreateExpenseRequestDTO requestDTO){
+    public CreateExpenseResponseDTO createExpense(@RequestBody ExpenseRequestDTO requestDTO){
         return expenseService.createExpense(requestDTO);
     }
 }
