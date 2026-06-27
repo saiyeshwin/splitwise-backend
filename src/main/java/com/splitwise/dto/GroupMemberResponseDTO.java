@@ -6,4 +6,5 @@ public class GroupMemberResponseDTO {
     private String groupName;
     private Long userId;
     private String userName;
+    private String userEmail;
 }

@@ -11,6 +11,9 @@ import com.splitwise.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @RequiredArgsConstructor
 @Service
 public class GroupMemberService {
@@ -35,5 +38,21 @@ public class GroupMemberService {
         response.setUserId(savedMember.getUser().getId());
         response.setUserName(savedMember.getUser().getName());
         return response;
+    }
+
+    public List<GroupMemberResponseDTO> getMembers(Long groupId) {
+        Group group = groupRepository.findById(groupId)
+                        .orElseThrow(() -> new RuntimeException("Group not found"));
+        return groupMemberRepository.findByGroup(group).stream()
+                .map(gm -> {
+                    GroupMemberResponseDTO dto = new GroupMemberResponseDTO();
+                    dto.setGroupId(gm.getGroup().getId());
+                    dto.setGroupName(gm.getGroup().getName());
+                    dto.setUserId(gm.getUser().getId());
+                    dto.setUserName(gm.getUser().getName());
+                    dto.setUserEmail(gm.getUser().getEmail());
+                    return dto;
+                })
+                .collect(Collectors.toList());
     }
 }

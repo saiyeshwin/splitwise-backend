@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Splitwise — Dashboard</title>
+  <meta name="description" content="A professional expense splitting application with smart debt simplification.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     AUTH SCREEN
+════════════════════════════════════════════════════════════════ -->
+<div id="auth-screen">
+  <div class="auth-card glass-strong">
+    <div class="auth-logo">
+      <div class="logo-icon">⚡</div>
+      <h1>Splitwise</h1>
+      <p>Smart expense splitting for teams</p>
+    </div>
+
+    <div class="auth-tabs" role="tablist">
+      <button class="auth-tab active" id="tab-login"    onclick="switchAuthTab('login')"    role="tab">Sign In</button>
+      <button class="auth-tab"        id="tab-register" onclick="switchAuthTab('register')" role="tab">Register</button>
+    </div>
+
+    <!-- Login Panel -->
+    <div class="auth-panel active" id="panel-login">
+      <div id="login-error" class="auth-error"></div>
+      <div class="form-group">
+        <label for="login-email">Email Address</label>
+        <input id="login-email" class="form-control" type="email" placeholder="you@company.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="login-password">Password</label>
+        <input id="login-password" class="form-control" type="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary btn-full" id="btn-login" onclick="handleLogin()">
+        Sign In
+      </button>
+    </div>
+
+    <!-- Register Panel -->
+    <div class="auth-panel" id="panel-register">
+      <div id="register-error" class="auth-error"></div>
+      <div class="form-group">
+        <label for="reg-name">Full Name</label>
+        <input id="reg-name" class="form-control" type="text" placeholder="Jane Doe" autocomplete="name">
+      </div>
+      <div class="form-group">
+        <label for="reg-email">Email Address</label>
+        <input id="reg-email" class="form-control" type="email" placeholder="you@company.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="reg-password">Password</label>
+        <input id="reg-password" class="form-control" type="password" placeholder="Min 6 characters" autocomplete="new-password">
+      </div>
+      <button class="btn btn-primary btn-full" id="btn-register" onclick="handleRegister()">
+        Create Account
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     APP SCREEN
+════════════════════════════════════════════════════════════════ -->
+<div id="app-screen">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">⚡</div>
+      <span class="sidebar-title">Splitwise</span>
+    </div>
+
+    <div class="sidebar-user">
+      <div class="user-avatar" id="user-avatar-initials">JD</div>
+      <div class="user-info">
+        <div class="user-name"  id="sidebar-user-name">Jane Doe</div>
+        <div class="user-email" id="sidebar-user-email">jane@example.com</div>
+      </div>
+      <button class="btn-logout" title="Sign Out" onclick="handleLogout()">⎋</button>
+    </div>
+
+    <div class="sidebar-section-label">
+      <span>Groups</span>
+      <button class="btn-icon" title="New Group" onclick="openModal('modal-new-group')">＋</button>
+    </div>
+
+    <div class="groups-list" id="groups-list">
+      <!-- Populated by app.js -->
+    </div>
+  </aside>
+
+  <!-- Main Stage -->
+  <main class="main-stage">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div style="flex:1">
+        <div class="topbar-title" id="topbar-group-name">Select a Group</div>
+        <div class="topbar-subtitle" id="topbar-group-sub">Choose a group from the sidebar to get started</div>
+      </div>
+      <div class="topbar-actions" id="topbar-actions" style="display:none">
+        <button class="btn btn-ghost btn-sm" onclick="openModal('modal-settle')">💸 Settle Up</button>
+        <button class="btn btn-primary btn-sm" onclick="openModal('modal-expense')">＋ Add Expense</button>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">🏦</div>
+      <h3>No Group Selected</h3>
+      <p>Select a group from the sidebar, or create a new one to start tracking expenses.</p>
+      <button class="btn btn-primary" onclick="openModal('modal-new-group')">＋ Create Group</button>
+    </div>
+
+    <!-- Stage Content -->
+    <div class="stage-content" id="stage-content">
+
+      <!-- Summary Stats -->
+      <div class="summary-row">
+        <div class="stat-card glass owed">
+          <div class="stat-label">You are Owed</div>
+          <div class="stat-value positive" id="stat-owed">₹0</div>
+        </div>
+        <div class="stat-card glass owing">
+          <div class="stat-label">You Owe</div>
+          <div class="stat-value negative" id="stat-owing">₹0</div>
+        </div>
+        <div class="stat-card glass settled">
+          <div class="stat-label">Members</div>
+          <div class="stat-value neutral" id="stat-members">0</div>
+        </div>
+      </div>
+
+      <!-- Members -->
+      <div>
+        <div class="section-header">
+          <span class="section-title">Members</span>
+          <button class="btn btn-ghost btn-sm" onclick="openAddMemberModal()">＋ Add Member</button>
+        </div>
+        <div class="members-row" id="members-row"></div>
+      </div>
+
+      <!-- Simplified Debts -->
+      <div>
+        <div class="section-header">
+          <span class="section-title">Simplified Debts</span>
+        </div>
+        <div class="balances-list" id="balances-list"></div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MODAL — NEW GROUP
+════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-new-group">
+  <div class="modal glass-strong">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Create New Group</div>
+        <div class="modal-subtitle">Start tracking shared expenses</div>
+      </div>
+      <button class="btn-close" onclick="closeModal('modal-new-group')">✕</button>
+    </div>
+
+    <div id="new-group-error" class="auth-error"></div>
+
+    <div class="form-group">
+      <label for="grp-name">Group Name</label>
+      <input id="grp-name" class="form-control" type="text" placeholder="e.g. Europe Trip, Roommates...">
+    </div>
+
+    <div class="form-group">
+      <label>Add Members (by Email)</label>
+      <div class="member-search-row">
+        <input id="grp-member-email" class="form-control" type="email" placeholder="member@example.com"
+               onkeydown="if(event.key==='Enter') addPendingMember()">
+        <button class="btn btn-ghost" onclick="addPendingMember()">Add</button>
+      </div>
+      <div class="pending-members" id="pending-members"></div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-new-group')">Cancel</button>
+      <button class="btn btn-primary" id="btn-create-group" onclick="handleCreateGroup()">Create Group</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MODAL — ADD MEMBER
+════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-add-member">
+  <div class="modal glass-strong">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Add Member</div>
+        <div class="modal-subtitle" id="add-member-subtitle">Add a new member to this group</div>
+      </div>
+      <button class="btn-close" onclick="closeModal('modal-add-member')">✕</button>
+    </div>
+
+    <div id="add-member-error" class="auth-error"></div>
+
+    <div class="form-group">
+      <label for="new-member-email">Member Email</label>
+      <input id="new-member-email" class="form-control" type="email" placeholder="member@example.com">
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-add-member')">Cancel</button>
+      <button class="btn btn-primary" onclick="handleAddMember()">Add Member</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MODAL — ADD EXPENSE
+════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-expense">
+  <div class="modal glass-strong">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Add Expense</div>
+        <div class="modal-subtitle">Log a shared expense for this group</div>
+      </div>
+      <button class="btn-close" onclick="closeModal('modal-expense')">✕</button>
+    </div>
+
+    <div id="expense-error" class="auth-error"></div>
+
+    <div class="form-group">
+      <label for="exp-desc">Description</label>
+      <input id="exp-desc" class="form-control" type="text" placeholder="e.g. Dinner, Cab, Hotel...">
+    </div>
+
+    <div class="form-group">
+      <label for="exp-amount">Total Amount (₹)</label>
+      <input id="exp-amount" class="form-control" type="number" placeholder="0.00" min="0" step="0.01"
+             oninput="updateSplitHint()">
+    </div>
+
+    <div class="form-group">
+      <label for="exp-paidby">Paid By</label>
+      <select id="exp-paidby" class="form-control">
+        <!-- Populated dynamically -->
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Split Type</label>
+      <div class="split-tabs" role="tablist">
+        <button class="split-tab active" onclick="setSplitType('EQUAL')"   id="st-equal"   role="tab">EQUAL</button>
+        <button class="split-tab"        onclick="setSplitType('EXACT')"   id="st-exact"   role="tab">EXACT</button>
+        <button class="split-tab"        onclick="setSplitType('PERCENT')" id="st-percent" role="tab">PERCENT</button>
+      </div>
+
+      <!-- EQUAL info -->
+      <div id="split-equal-info" style="font-size:0.82rem; color:var(--text-muted); margin-top:4px;">
+        Amount will be divided equally among all group members.
+      </div>
+
+      <!-- Dynamic split inputs (EXACT / PERCENT) -->
+      <div id="split-inputs-container" style="display:none">
+        <div class="split-members-list" id="split-members-list"></div>
+        <div class="split-validation" id="split-validation"></div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-expense')">Cancel</button>
+      <button class="btn btn-primary" id="btn-add-expense" onclick="handleAddExpense()">Add Expense</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MODAL — SETTLE UP
+════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-settle">
+  <div class="modal glass-strong">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Settle Up</div>
+        <div class="modal-subtitle">Record a debt payment between members</div>
+      </div>
+      <button class="btn-close" onclick="closeModal('modal-settle')">✕</button>
+    </div>
+
+    <div id="settle-error" class="auth-error"></div>
+
+    <div class="form-group">
+      <label for="settle-from">Payer (sends money)</label>
+      <select id="settle-from" class="form-control" onchange="updateSettleHint()">
+        <!-- Populated dynamically -->
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="settle-to">Recipient (receives money)</label>
+      <select id="settle-to" class="form-control">
+        <!-- Populated dynamically -->
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="settle-amount">Amount (₹)</label>
+      <input id="settle-amount" class="form-control" type="number" placeholder="0.00" min="0" step="0.01">
+    </div>
+
+    <!-- Suggested debt hint -->
+    <div id="settle-hint" style="display:none" class="split-validation ok"></div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-settle')">Cancel</button>
+      <button class="btn btn-accent" onclick="handleSettle()">Confirm Payment</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     TOAST CONTAINER
+════════════════════════════════════════════════════════════════ -->
+<div id="toast-container"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
